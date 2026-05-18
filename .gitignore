@@ -1,0 +1,10 @@
+config/autopaper_config.json
+data/cache/
+data/outputs/
+knowledge/
+__pycache__/
+*.py[cod]
+skills收集.txt
+任务目标.txt
+任务.txt
+SKILL.md

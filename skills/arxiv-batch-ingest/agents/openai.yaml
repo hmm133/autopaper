@@ -1,0 +1,4 @@
+interface:
+  display_name: "ArXiv Ingest"
+  short_description: "Batch ingest arXiv source trees."
+  default_prompt: "Use this skill to read a txt file of arXiv IDs or URLs and prepare local source trees."

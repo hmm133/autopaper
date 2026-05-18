@@ -1,0 +1,4 @@
+interface:
+  display_name: "LaTeX Markdown"
+  short_description: "Convert LaTeX source to markdown."
+  default_prompt: "Use this skill to locate LaTeX entrypoints and produce normalized markdown."

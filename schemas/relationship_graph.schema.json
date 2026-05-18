@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Relationship Graph",
+  "type": "object",
+  "required": ["metadata", "macro", "micro"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "paper_count",
+        "comparison_mode",
+        "candidate_pair_count",
+        "evaluated_pair_count",
+        "accepted_macro_edge_count",
+        "accepted_micro_edge_count"
+      ],
+      "properties": {
+        "paper_count": {
+          "type": "integer"
+        },
+        "comparison_mode": {
+          "enum": ["full_pairwise", "candidate_filtered"]
+        },
+        "candidate_pair_count": {
+          "type": "integer"
+        },
+        "evaluated_pair_count": {
+          "type": "integer"
+        },
+        "accepted_macro_edge_count": {
+          "type": "integer"
+        },
+        "accepted_micro_edge_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "macro": {
+      "$ref": "#/$defs/graphLayer"
+    },
+    "micro": {
+      "$ref": "#/$defs/graphLayer"
+    }
+  },
+  "$defs": {
+    "graphLayer": {
+      "type": "object",
+      "required": ["nodes", "edges"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              { "$ref": "#/$defs/macroNode" },
+              { "$ref": "#/$defs/microNode" }
+            ]
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              { "$ref": "#/$defs/macroEdge" },
+              { "$ref": "#/$defs/microEdge" }
+            ]
+          }
+        }
+      }
+    },
+    "macroNode": {
+      "type": "object",
+      "required": ["id", "label", "kind"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "const": "paper" },
+        "paper_id": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] }
+      }
+    },
+    "microNode": {
+      "type": "object",
+      "required": ["id", "label", "kind", "paper_id", "unit_type"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": { "const": "paper_unit" },
+        "paper_id": { "type": "string" },
+        "title": { "type": ["string", "null"] },
+        "unit_type": {
+          "enum": [
+            "research_problem",
+            "scope_or_setting",
+            "core_claim",
+            "method",
+            "formal_conclusion",
+            "validation_logic",
+            "figure_backed_assertion",
+            "assumption_or_prerequisite",
+            "limitation"
+          ]
+        },
+        "summary": { "type": ["string", "null"] }
+      }
+    },
+    "macroEdge": {
+      "type": "object",
+      "required": ["id", "source", "target", "relation", "confidence", "supporting_micro_edges"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "relation": {
+          "enum": ["support", "conflict", "extend", "parallel", "basis", "complement", "apply"]
+        },
+        "confidence": { "type": ["number", "null"] },
+        "rationale": { "type": ["string", "null"] },
+        "supporting_micro_edges": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "microEdge": {
+      "type": "object",
+      "required": ["id", "source", "target", "relation", "confidence", "evidence_refs"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "string" },
+        "relation": {
+          "enum": [
+            "support",
+            "conflict",
+            "extend",
+            "parallel",
+            "basis",
+            "complement",
+            "apply",
+            "addresses_limitation_of",
+            "comparable_validation"
+          ]
+        },
+        "confidence": { "type": ["number", "null"] },
+        "rationale": { "type": ["string", "null"] },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

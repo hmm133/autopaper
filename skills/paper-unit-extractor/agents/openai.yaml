@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unit Extractor"
+  short_description: "Extract structured paper units."
+  default_prompt: "Use this skill to extract core claims, conclusions, experiment logic, and figure-backed assertions."

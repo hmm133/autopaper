@@ -1,0 +1,4 @@
+interface:
+  display_name: "Paper Workflow"
+  short_description: "Run the paper graph pipeline."
+  default_prompt: "Use this skill to coordinate the autopaper multi-stage workflow."

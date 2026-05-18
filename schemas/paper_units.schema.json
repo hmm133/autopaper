@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Paper Units",
+  "type": "object",
+  "required": ["paper_id", "units"],
+  "properties": {
+    "paper_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": ["string", "null"]
+    },
+    "source_url": {
+      "type": ["string", "null"]
+    },
+    "markdown_path": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": ["string", "null"]
+    },
+    "unit_count": {
+      "type": ["integer", "null"]
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "text", "evidence"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "research_problem",
+              "scope_or_setting",
+              "core_claim",
+              "method",
+              "formal_conclusion",
+              "validation_logic",
+              "figure_backed_assertion",
+              "assumption_or_prerequisite",
+              "limitation"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "summary": {
+            "type": ["string", "null"]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["source_file", "section_hint", "quote"],
+              "properties": {
+                "source_file": {
+                  "type": "string"
+                },
+                "section_hint": {
+                  "type": ["string", "null"]
+                },
+                "quote": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

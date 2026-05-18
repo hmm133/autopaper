@@ -1,0 +1,16 @@
+[project]
+name = "autopaper"
+version = "0.1.0"
+description = "Pipeline for ingesting arXiv papers and building cross-paper relationship graphs."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+autopaper = "app.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app", "app.models", "app.pipeline", "app.providers", "app.utils"]

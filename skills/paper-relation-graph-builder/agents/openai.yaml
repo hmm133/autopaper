@@ -1,0 +1,4 @@
+interface:
+  display_name: "Relation Graph"
+  short_description: "Build macro and micro graphs."
+  default_prompt: "Use this skill to infer cross-paper relations and emit graph data for the dual-view UI."
