@@ -7,14 +7,37 @@
     "paper_id": {
       "type": "string"
     },
-    "title": {
-      "type": ["string", "null"]
-    },
-    "source_url": {
-      "type": ["string", "null"]
-    },
-    "markdown_path": {
-      "type": ["string", "null"]
+    "paper_metadata": {
+      "type": ["object", "null"],
+      "properties": {
+        "title": {
+          "type": ["string", "null"]
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "year": {
+          "type": ["integer", "null"]
+        },
+        "venue": {
+          "type": ["string", "null"]
+        },
+        "arxiv_id": {
+          "type": ["string", "null"]
+        },
+        "doi": {
+          "type": ["string", "null"]
+        },
+        "source_url": {
+          "type": ["string", "null"]
+        },
+        "markdown_path": {
+          "type": ["string", "null"]
+        }
+      }
     },
     "status": {
       "type": ["string", "null"]
@@ -26,22 +49,22 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "type", "text", "evidence"],
+        "required": ["id", "type", "text", "sources"],
         "properties": {
           "id": {
             "type": "string"
           },
           "type": {
             "enum": [
-              "research_problem",
-              "scope_or_setting",
+              "research_question",
               "core_claim",
               "method",
               "formal_conclusion",
-              "validation_logic",
-              "figure_backed_assertion",
-              "assumption_or_prerequisite",
-              "limitation"
+              "evidence",
+              "limitation",
+              "assumption",
+              "scope",
+              "resource"
             ]
           },
           "text": {
@@ -50,15 +73,36 @@
           "summary": {
             "type": ["string", "null"]
           },
-          "evidence": {
+          "supports": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence_type": {
+            "type": ["string", "null"]
+          },
+          "scope_data": {
+            "type": ["object", "null"],
+            "additionalProperties": {
+              "type": ["string", "number", "boolean", "null"]
+            }
+          },
+          "resource_type": {
+            "type": ["string", "null"]
+          },
+          "resource_name": {
+            "type": ["string", "null"]
+          },
+          "resource_role": {
+            "type": ["string", "null"]
+          },
+          "sources": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["source_file", "section_hint", "quote"],
+              "required": ["section_hint", "quote"],
               "properties": {
-                "source_file": {
-                  "type": "string"
-                },
                 "section_hint": {
                   "type": ["string", "null"]
                 },
@@ -68,8 +112,10 @@
               }
             }
           }
-        }
+        },
+        "additionalProperties": false
       }
     }
-  }
+  },
+  "additionalProperties": false
 }

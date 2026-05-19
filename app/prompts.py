@@ -17,6 +17,7 @@ def build_unit_extraction_messages(
     schema: dict,
     unit_types: list[str],
     group_name: str,
+    prior_units: list[dict] | None = None,
 ) -> list[dict[str, str]]:
     unit_type_lines = [f"{idx + 1}. {unit_type}" for idx, unit_type in enumerate(unit_types)]
     system_prompt = "\n".join(
@@ -48,39 +49,67 @@ def build_unit_extraction_messages(
             "",
             "Rules:",
             "- Keep a middle granularity.",
+            "- summary should be short and compressed.",
+            "- text should be fuller, more explicit, and more informative than summary.",
+            "- text may use 1-3 sentences when needed so the idea is preserved with enough detail.",
+            "- Do not over-compress text into a short label, but do not let it become a long paragraph dump.",
             "- Prefer one stronger unit over many fragmented weak units.",
             "- A paper may contain multiple units of the same type.",
             "- If two units would support different future graph relations, keep them separate.",
             "- Do not output unit types outside this group's allowed list.",
             "- For this run, keep the output concise and relation-focused.",
             "- Usually extract at most 1-3 units per type unless the paper clearly requires more.",
-            "- Every unit must include evidence with source_file, section_hint, and quote.",
-            "- source_file should be the LaTeX entrypoint filename unless a better local source is obvious.",
-            "- Use exact or near-exact quotations for evidence quotes.",
+            "- Every unit must include sources with section_hint and quote.",
+            "- Use exact or near-exact quotations for source quotes.",
+            "- Preserve stable IDs because later stages will reference them.",
             "- Ignore references and bibliography.",
+            "- If extracting evidence units, use supports to point to concrete core_claim or formal_conclusion IDs when possible.",
+            "- Omit optional fields when they are not needed. Do not emit null-filled filler fields.",
+            "- For resource units, preserve the concrete benchmark, dataset, model, codebase, or tool name when it is explicitly given.",
             "- Output a single json object only.",
             "",
             "JSON schema:",
             json.dumps(schema, ensure_ascii=False, indent=2),
             "",
+            "Previously extracted units for this paper:",
+            json.dumps(
+                [
+                    {
+                        "id": unit.get("id"),
+                        "type": unit.get("type"),
+                        "summary": unit.get("summary"),
+                        "text": unit.get("text"),
+                    }
+                    for unit in (prior_units or [])
+                ],
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "",
             "Example JSON shape:",
             json.dumps(
                 {
                     "paper_id": record.arxiv_id,
-                    "title": record.title or "",
-                    "source_url": record.source_url,
-                    "markdown_path": str(record.markdown_path),
+                    "paper_metadata": {
+                        "title": record.title or "",
+                        "authors": [],
+                        "year": None,
+                        "venue": None,
+                        "arxiv_id": record.arxiv_id,
+                        "doi": None,
+                        "source_url": record.source_url,
+                        "markdown_path": str(record.markdown_path),
+                    },
                     "status": "extracted",
                     "unit_count": 2,
                     "units": [
                         {
-                            "id": f"{record.normalized_id}_problem_1",
+                            "id": f"{record.normalized_id}_question_1",
                             "type": unit_types[0],
-                            "text": "Example research problem text",
+                            "text": "Example research question text with enough detail to preserve the actual objective, setting, and scope of the paper rather than reducing it to a short label.",
                             "summary": "Example problem summary",
-                            "evidence": [
+                            "sources": [
                                 {
-                                    "source_file": record.entrypoint_path.name if record.entrypoint_path else "main.tex",
                                     "section_hint": "Abstract",
                                     "quote": "Example quote"
                                 }
@@ -89,11 +118,10 @@ def build_unit_extraction_messages(
                         {
                             "id": f"{record.normalized_id}_claim_1",
                             "type": unit_types[min(1, len(unit_types) - 1)],
-                            "text": "Example claim text",
+                            "text": "Example claim text with enough detail to preserve the substance of the contribution so later relation inference can compare meaning, not just labels.",
                             "summary": "Example claim summary",
-                            "evidence": [
+                            "sources": [
                                 {
-                                    "source_file": record.entrypoint_path.name if record.entrypoint_path else "main.tex",
                                     "section_hint": "Introduction",
                                     "quote": "Another example quote"
                                 }
@@ -198,7 +226,11 @@ def build_relationship_inference_messages(
             "- Do not force links between papers.",
             "- Prefer no relation over a speculative relation.",
             "- Use only cross-paper relations.",
+            "- Determine micro relations first, then derive the macro relation from them.",
             "- Macro relation must be supported by the returned micro relations.",
+            "- Use scope and assumption mainly as comparability constraints, not as high-volume edge sources.",
+            "- Use evidence units to validate, strengthen, weaken, or block stronger claim-level or conclusion-level relations.",
+            "- If only comparable_validation is justified, usually leave the macro relation empty.",
             "",
             "Skill:",
             skill_text,
@@ -209,8 +241,10 @@ def build_relationship_inference_messages(
         [
             "Task:",
             "Compare the two papers below and infer whether a meaningful cross-paper relation exists.",
-            "If yes, output the supported micro relations and one macro relation summary.",
-            "If not, output has_meaningful_relation=false and micro_relations=[].",
+            "Work in this order:",
+            "1. Identify only the strongest justified cross-paper micro relations.",
+            "2. If and only if those micro relations support a paper-level summary, derive one macro relation.",
+            "If no strong relation exists, output has_meaningful_relation=false and micro_relations=[].",
             "",
             "Macro relation choices:",
             "- support",
@@ -232,6 +266,21 @@ def build_relationship_inference_messages(
             "- addresses_limitation_of",
             "- comparable_validation",
             "",
+            "Preferred comparison priorities:",
+            "1. research_question <-> research_question",
+            "2. core_claim <-> core_claim",
+            "3. method <-> method",
+            "4. formal_conclusion <-> formal_conclusion",
+            "5. evidence <-> evidence",
+            "6. limitation <-> method/core_claim/formal_conclusion",
+            "7. resource <-> resource",
+            "",
+            "Important interpretation rules:",
+            "- Do not confuse topical overlap with support.",
+            "- Do not emit conflict unless the compared units are genuinely comparable and materially disagree.",
+            "- Prefer parallel or no edge when scope or assumptions differ too much.",
+            "- Resource overlap alone is usually not enough for a strong macro relation.",
+            "",
             "JSON schema:",
             json.dumps(schema, ensure_ascii=False, indent=2),
             "",
@@ -240,13 +289,13 @@ def build_relationship_inference_messages(
                 {
                     "paper_a": left.get("paper_id", ""),
                     "paper_b": right.get("paper_id", ""),
+                    "micro_relations": [],
                     "decision": {
                         "has_meaningful_relation": False,
                         "macro_relation": None,
                         "confidence": 0.18,
                         "rationale": "The papers are broadly adjacent but the extracted units do not support a concrete cross-paper relation."
-                    },
-                    "micro_relations": []
+                    }
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -257,12 +306,6 @@ def build_relationship_inference_messages(
                 {
                     "paper_a": left.get("paper_id", ""),
                     "paper_b": right.get("paper_id", ""),
-                    "decision": {
-                        "has_meaningful_relation": True,
-                        "macro_relation": "extend",
-                        "confidence": 0.81,
-                        "rationale": "Paper B extends Paper A by building on a similar problem and adding a stronger method and validation structure."
-                    },
                     "micro_relations": [
                         {
                             "source_unit_id": "paper_b_method_1",
@@ -272,7 +315,39 @@ def build_relationship_inference_messages(
                             "rationale": "The later method adopts the earlier framing and expands it into a stronger pipeline.",
                             "evidence_refs": ["paper_b:paper_b_method_1", "paper_a:paper_a_method_1"]
                         }
-                    ]
+                    ],
+                    "decision": {
+                        "has_meaningful_relation": True,
+                        "macro_relation": "extend",
+                        "confidence": 0.81,
+                        "rationale": "Paper B extends Paper A by building on a similar problem and adding a stronger method and validation structure."
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            "",
+            "Example validation-only JSON:",
+            json.dumps(
+                {
+                    "paper_a": left.get("paper_id", ""),
+                    "paper_b": right.get("paper_id", ""),
+                    "micro_relations": [
+                        {
+                            "source_unit_id": "paper_a_evidence_1",
+                            "target_unit_id": "paper_b_evidence_2",
+                            "relation": "comparable_validation",
+                            "confidence": 0.72,
+                            "rationale": "Both papers validate related findings using strongly comparable benchmark structure and evaluation framing.",
+                            "evidence_refs": ["paper_a:paper_a_evidence_1", "paper_b:paper_b_evidence_2"]
+                        }
+                    ],
+                    "decision": {
+                        "has_meaningful_relation": False,
+                        "macro_relation": None,
+                        "confidence": 0.41,
+                        "rationale": "The papers have comparable validation structure, but this alone does not justify a stronger paper-level macro relation."
+                    }
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -295,14 +370,13 @@ def build_relationship_inference_messages(
 def _compact_units_for_relation(payload: dict) -> dict:
     units = []
     for unit in payload.get("units", []):
-        evidence_refs = []
-        for idx, evidence in enumerate(unit.get("evidence", []), start=1):
-            evidence_refs.append(
+        source_refs = []
+        for idx, source in enumerate(unit.get("sources", []), start=1):
+            source_refs.append(
                 {
                     "ref_id": f"{payload.get('paper_id', 'paper')}:{unit['id']}:e{idx}",
-                    "source_file": evidence.get("source_file"),
-                    "section_hint": evidence.get("section_hint"),
-                    "quote": evidence.get("quote"),
+                    "section_hint": source.get("section_hint"),
+                    "quote": source.get("quote"),
                 }
             )
         units.append(
@@ -311,11 +385,18 @@ def _compact_units_for_relation(payload: dict) -> dict:
                 "type": unit["type"],
                 "summary": unit.get("summary"),
                 "text": unit.get("text"),
-                "evidence": evidence_refs,
+                "supports": unit.get("supports", []),
+                "evidence_type": unit.get("evidence_type"),
+                "scope_data": unit.get("scope_data"),
+                "resource_name": unit.get("resource_name"),
+                "resource_type": unit.get("resource_type"),
+                "resource_role": unit.get("resource_role"),
+                "sources": source_refs,
             }
         )
     return {
         "paper_id": payload.get("paper_id"),
-        "title": payload.get("title"),
+        "title": (payload.get("paper_metadata") or {}).get("title"),
+        "paper_metadata": payload.get("paper_metadata"),
         "units": units,
     }

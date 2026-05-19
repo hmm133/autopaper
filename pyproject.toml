@@ -3,7 +3,9 @@ name = "autopaper"
 version = "0.1.0"
 description = "Pipeline for ingesting arXiv papers and building cross-paper relationship graphs."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "PyMuPDF>=1.24,<2",
+]
 
 [project.scripts]
 autopaper = "app.cli:main"

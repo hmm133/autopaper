@@ -11,17 +11,17 @@ from app.providers.factory import build_provider
 
 UNIT_GROUPS = {
     "semantic_core": [
-        "research_problem",
-        "scope_or_setting",
+        "research_question",
         "core_claim",
         "method",
         "formal_conclusion",
+        "scope",
     ],
     "evidence_boundary": [
-        "validation_logic",
-        "figure_backed_assertion",
-        "assumption_or_prerequisite",
+        "evidence",
+        "assumption",
         "limitation",
+        "resource",
     ],
 }
 
@@ -42,6 +42,17 @@ def extract_paper_units(record: PaperRecord, output_dir: Path, llm_config: LLMCo
     full_schema = json.loads(Path("schemas/paper_units.schema.json").read_text(encoding="utf-8"))
     provider = build_provider(llm_config)
     merged_units: list[dict] = []
+    prior_units: list[dict] = []
+    paper_metadata = {
+        "title": record.title,
+        "authors": [],
+        "year": None,
+        "venue": None,
+        "arxiv_id": record.arxiv_id,
+        "doi": None,
+        "source_url": record.source_url,
+        "markdown_path": str(record.markdown_path),
+    }
 
     for group_name, unit_types in UNIT_GROUPS.items():
         schema = _build_group_schema(full_schema, unit_types)
@@ -52,6 +63,7 @@ def extract_paper_units(record: PaperRecord, output_dir: Path, llm_config: LLMCo
             schema=schema,
             unit_types=unit_types,
             group_name=group_name,
+            prior_units=prior_units,
         )
         messages = [LLMMessage(**message) for message in raw_messages]
         payload = provider.create_json(messages, schema)
@@ -59,13 +71,19 @@ def extract_paper_units(record: PaperRecord, output_dir: Path, llm_config: LLMCo
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        merged_units.extend(payload.get("units", []))
+        group_units = payload.get("units", [])
+        metadata = payload.get("paper_metadata") or {}
+        for key in ("title", "year", "venue", "arxiv_id", "doi", "source_url", "markdown_path"):
+            if metadata.get(key) not in (None, "", []):
+                paper_metadata[key] = metadata[key]
+        if metadata.get("authors"):
+            paper_metadata["authors"] = metadata["authors"]
+        merged_units.extend(group_units)
+        prior_units.extend(group_units)
 
     payload = {
         "paper_id": record.arxiv_id,
-        "title": record.title,
-        "source_url": record.source_url,
-        "markdown_path": str(record.markdown_path),
+        "paper_metadata": paper_metadata,
         "status": "extracted",
         "unit_count": len(merged_units),
         "units": merged_units,
@@ -86,19 +104,28 @@ def ensure_placeholder_extraction(record: PaperRecord, output_dir: Path) -> Path
     if not extraction_path.exists():
         extraction = {
             "paper_id": record.arxiv_id,
-            "title": record.title,
+            "paper_metadata": {
+                "title": record.title,
+                "authors": [],
+                "year": None,
+                "venue": None,
+                "arxiv_id": record.arxiv_id,
+                "doi": None,
+                "source_url": record.source_url,
+                "markdown_path": None,
+            },
             "units": [],
             "status": "placeholder",
             "expected_unit_types": [
-                "research_problem",
-                "scope_or_setting",
+                "research_question",
                 "core_claim",
                 "method",
                 "formal_conclusion",
-                "validation_logic",
-                "figure_backed_assertion",
-                "assumption_or_prerequisite",
+                "evidence",
+                "assumption",
                 "limitation",
+                "scope",
+                "resource",
             ],
         }
         extraction_path.write_text(

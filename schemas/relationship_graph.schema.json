@@ -89,15 +89,15 @@
         "title": { "type": ["string", "null"] },
         "unit_type": {
           "enum": [
-            "research_problem",
-            "scope_or_setting",
+            "research_question",
             "core_claim",
             "method",
             "formal_conclusion",
-            "validation_logic",
-            "figure_backed_assertion",
-            "assumption_or_prerequisite",
-            "limitation"
+            "evidence",
+            "limitation",
+            "assumption",
+            "scope",
+            "resource"
           ]
         },
         "summary": { "type": ["string", "null"] }

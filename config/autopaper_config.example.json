@@ -3,6 +3,10 @@
     "provider": "openai-compatible",
     "model": "gpt-4.1",
     "api_key": "YOUR_API_KEY_HERE",
-    "base_url": "https://api.openai.com/v1"
+    "base_url": "https://api.openai.com/v1",
+    "json_mode": "auto",
+    "max_tokens": 4000,
+    "timeout_seconds": 180,
+    "retries": 3
   }
 }

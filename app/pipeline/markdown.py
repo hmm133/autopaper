@@ -45,6 +45,14 @@ REFERENCES_HEADING_RE = re.compile(
     r"\\(?:bibliography|begin\{thebibliography\}|section\*?\{(?:references|bibliography|acknowledgements?)\})",
     re.IGNORECASE,
 )
+PDF_REFERENCE_HEADING_RE = re.compile(
+    r"^(?:\d+(?:\.\d+)*\s+)?(?:references|bibliography|works cited)$",
+    re.IGNORECASE,
+)
+PDF_BAD_TITLE_HINT_RE = re.compile(
+    r"(google docs|microsoft word|overleaf|sharelatex|draft|untitled|working doc)",
+    re.IGNORECASE,
+)
 COMMAND_REPLACEMENTS = {
     r"\&": "&",
     r"\%": "%",
@@ -136,6 +144,67 @@ def build_markdown_from_source(record: PaperRecord, output_dir: Path, llm_config
             body_lines.extend([f"## {heading}", "", content, ""])
     else:
         body_lines.extend(["## Raw Body", "", _normalize_tex_text(cleaned), ""])
+
+    markdown_path.write_text("\n".join(body_lines).strip() + "\n", encoding="utf-8")
+    return markdown_path
+
+
+def build_markdown_from_pdf(record: PaperRecord, output_dir: Path) -> Path:
+    if not record.pdf_path:
+        raise ValueError("record.pdf_path is required before PDF markdown generation.")
+
+    try:
+        import fitz
+    except ImportError as exc:
+        raise ImportError(
+            "PyMuPDF is not installed. Install pymupdf before using PDF input."
+        ) from exc
+
+    markdown_dir = output_dir / "markdown"
+    markdown_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path = markdown_dir / f"{record.normalized_id}.md"
+
+    with fitz.open(record.pdf_path) as doc:
+        metadata = doc.metadata or {}
+        page_texts = []
+        raw_page_texts = []
+        for page_index, page in enumerate(doc, start=1):
+            text = page.get_text("text", sort=True)
+            raw_page_texts.append((page_index, text))
+            normalized = _normalize_pdf_text(text)
+            if normalized:
+                page_texts.append((page_index, normalized))
+
+    full_text = "\n\n".join(text for _, text in page_texts).strip()
+    full_text = _strip_pdf_references_tail(full_text)
+    guessed_title = _guess_pdf_title(raw_page_texts)
+    metadata_title = _clean_pdf_title((metadata.get("title") or "").strip())
+    title = guessed_title or metadata_title or record.arxiv_id
+    record.title = title
+
+    body_lines = [
+        f"# {title}",
+        "",
+        f"- Paper ID: {record.arxiv_id}",
+        f"- Source: {record.source_url}",
+        f"- PDF Path: {record.pdf_path}",
+        "",
+    ]
+
+    abstract = _extract_pdf_abstract(full_text)
+    remaining_text = _drop_pdf_abstract(full_text, abstract)
+    sections = _extract_pdf_sections(remaining_text)
+
+    if abstract:
+        body_lines.extend(["## Abstract", "", abstract, ""])
+
+    if sections:
+        for heading, content in sections:
+            body_lines.extend([f"## {heading}", "", content, ""])
+    elif remaining_text:
+        body_lines.extend(["## Main Text", "", remaining_text, ""])
+    else:
+        body_lines.extend(["## Main Text", "", full_text, ""])
 
     markdown_path.write_text("\n".join(body_lines).strip() + "\n", encoding="utf-8")
     return markdown_path
@@ -363,6 +432,215 @@ def _normalize_tex_text(text: str) -> str:
     normalized = re.sub(r"\n\s*\n\s*\n+", "\n\n", normalized)
     normalized = re.sub(r"[ \t]+", " ", normalized)
     return normalized.strip()
+
+
+def _normalize_pdf_text(text: str) -> str:
+    sanitized = text.replace("\u00ad", "")
+    sanitized = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", sanitized)
+    sanitized = sanitized.replace("\u2018", "'").replace("\u2019", "'")
+    sanitized = sanitized.replace("\u201c", '"').replace("\u201d", '"')
+    sanitized = sanitized.replace("\u2013", "-").replace("\u2014", "-")
+    sanitized = sanitized.replace("\u2212", "-")
+    lines = [re.sub(r"\s+", " ", line).strip() for line in sanitized.splitlines()]
+    lines = [line for line in lines if not _is_pdf_noise_line(line)]
+    blocks: list[str] = []
+    paragraph: list[str] = []
+
+    def flush_paragraph() -> None:
+        if not paragraph:
+            return
+        merged = paragraph[0]
+        for piece in paragraph[1:]:
+            if merged.endswith("-") and piece and piece[0].islower():
+                merged = merged[:-1] + piece
+            else:
+                merged += " " + piece
+        blocks.append(merged.strip())
+        paragraph.clear()
+
+    for line in lines:
+        if not line:
+            flush_paragraph()
+            continue
+        if _is_probable_pdf_heading(line):
+            flush_paragraph()
+            blocks.append(line)
+            continue
+        paragraph.append(line)
+
+    flush_paragraph()
+    normalized = "\n\n".join(blocks)
+    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
+    normalized = re.sub(r"([(\[])\s+", r"\1", normalized)
+    normalized = re.sub(r"\s+([)\]])", r"\1", normalized)
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    return normalized.strip()
+
+
+def _guess_pdf_title(page_texts: list[tuple[int, str]]) -> str | None:
+    if not page_texts:
+        return None
+    first_page = page_texts[0][1]
+    title_lines: list[str] = []
+    for raw_line in first_page.splitlines():
+        candidate = re.sub(r"\s+", " ", raw_line).strip()
+        if not candidate:
+            if title_lines:
+                break
+            continue
+        lowered = candidate.lower()
+        if lowered.startswith(("abstract", "arxiv:")):
+            break
+        if "http://" in lowered or "https://" in lowered or "@" in candidate:
+            break
+        if ";" in candidate and len(title_lines) >= 1:
+            break
+        if re.search(r"\b(orcid|corresponding author|shared first authorship)\b", lowered):
+            break
+        title_lines.append(candidate)
+        if len(title_lines) >= 2:
+            break
+
+    candidate = _clean_pdf_title(" ".join(title_lines))
+    if candidate and len(candidate) >= 12:
+        return candidate
+    return None
+
+
+def _extract_pdf_abstract(text: str) -> str | None:
+    match = re.search(
+        r"(?is)\babstract\b[\s:]*\n*(.+?)(?=\n\n(?:\d+(?:\.\d+)*\s+)?(?:introduction|background|related work|method|methods|approach)\b)",
+        text,
+    )
+    if match:
+        abstract = match.group(1).strip()
+        return abstract or None
+    return None
+
+
+def _drop_pdf_abstract(text: str, abstract: str | None) -> str:
+    if not abstract:
+        return text
+    marker = f"Abstract\n\n{abstract}"
+    if marker in text:
+        return text.replace(marker, "", 1).strip()
+    compact_marker = f"Abstract {abstract}"
+    if compact_marker in text:
+        return text.replace(compact_marker, "", 1).strip()
+    return text
+
+
+def _extract_pdf_sections(text: str) -> list[tuple[str, str]]:
+    lines = [line.strip() for line in text.splitlines()]
+    heading_indexes = [index for index, line in enumerate(lines) if _is_probable_pdf_heading(line)]
+    if len(heading_indexes) < 2:
+        return []
+
+    sections: list[tuple[str, str]] = []
+    for offset, start in enumerate(heading_indexes):
+        heading = _clean_pdf_heading(lines[start])
+        if heading.lower() == "abstract":
+            continue
+        end = heading_indexes[offset + 1] if offset + 1 < len(heading_indexes) else len(lines)
+        content_lines = [line for line in lines[start + 1:end] if line]
+        content = "\n\n".join(_collapse_pdf_section_lines(content_lines)).strip()
+        if content:
+            sections.append((heading, content))
+    return sections
+
+
+def _strip_pdf_references_tail(text: str) -> str:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if PDF_REFERENCE_HEADING_RE.match(line.strip()):
+            return "\n".join(lines[:index]).strip()
+    return text
+
+
+def _collapse_pdf_section_lines(lines: list[str]) -> list[str]:
+    blocks: list[str] = []
+    paragraph: list[str] = []
+
+    def flush() -> None:
+        if not paragraph:
+            return
+        blocks.append(" ".join(paragraph).strip())
+        paragraph.clear()
+
+    for line in lines:
+        if _is_probable_pdf_heading(line):
+            flush()
+            blocks.append(line)
+            continue
+        if len(line) <= 3:
+            flush()
+            continue
+        paragraph.append(line)
+    flush()
+    return blocks
+
+
+def _clean_pdf_heading(line: str) -> str:
+    cleaned = re.sub(r"^\d+(?:\.\d+)*\s+", "", line).strip()
+    cleaned = re.sub(r"^(?:[IVXLC]+)\.\s+", "", cleaned)
+    return cleaned
+
+
+def _clean_pdf_title(value: str) -> str | None:
+    cleaned = re.sub(r"[\u200b-\u200f\u202a-\u202e\u2060\ufeff]", "", value)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -:_")
+    if not cleaned:
+        return None
+    if PDF_BAD_TITLE_HINT_RE.search(cleaned):
+        return None
+    return cleaned
+
+
+def _is_pdf_noise_line(line: str) -> bool:
+    candidate = line.strip()
+    if not candidate:
+        return True
+    if re.match(r"^appendix\s*-\s*[A-Z]?\d+\s*$", candidate, flags=re.IGNORECASE):
+        return True
+    if re.match(r"^\d+\s*/\s*\d+\s*$", candidate):
+        return True
+    return False
+
+
+def _is_probable_pdf_heading(line: str) -> bool:
+    candidate = re.sub(r"\s+", " ", line).strip()
+    if not candidate or len(candidate) > 90:
+        return False
+    if candidate.endswith((".", ",", ";")):
+        return False
+    if re.match(r"^\d+(?:\.\d+)*\s+[A-Z]", candidate):
+        return True
+    if re.match(r"^[IVXLC]+\.\s+[A-Z]", candidate):
+        return True
+    lowered = candidate.lower()
+    known = {
+        "abstract",
+        "introduction",
+        "background",
+        "related work",
+        "method",
+        "methods",
+        "methodology",
+        "approach",
+        "experiment",
+        "experiments",
+        "results",
+        "discussion",
+        "conclusion",
+        "limitations",
+        "appendix",
+    }
+    if lowered in known:
+        return True
+    words = candidate.split()
+    if 1 <= len(words) <= 10 and candidate == candidate.upper() and any(char.isalpha() for char in candidate):
+        return True
+    return False
 
 
 def _read_tex_tree(entrypoint: Path, seen: set[Path] | None = None) -> str:

@@ -7,7 +7,11 @@ from app.config import LLMConfig
 from app.pipeline.extract import ensure_placeholder_extraction, extract_paper_units
 from app.pipeline.graph import build_relationship_graph, ensure_placeholder_graph
 from app.pipeline.ingest import prepare_source_tree, read_input_list
-from app.pipeline.markdown import build_markdown_from_source, ensure_placeholder_markdown
+from app.pipeline.markdown import (
+    build_markdown_from_pdf,
+    build_markdown_from_source,
+    ensure_placeholder_markdown,
+)
 from app.utils.progress import ProgressReporter
 
 
@@ -29,11 +33,16 @@ def run_workflow(
     for index, record in enumerate(records, start=1):
         try:
             if reporter:
-                reporter.paper_stage(index, record.arxiv_id, "download-source")
+                reporter.paper_stage(index, record.arxiv_id, "prepare-input")
             record = prepare_source_tree(record, cache_dir)
-            if reporter:
-                reporter.paper_stage(index, record.arxiv_id, "latex-to-markdown")
-            record.markdown_path = build_markdown_from_source(record, output_dir, llm_config)
+            if record.status == "pdf-ready":
+                if reporter:
+                    reporter.paper_stage(index, record.arxiv_id, "pdf-to-markdown")
+                record.markdown_path = build_markdown_from_pdf(record, output_dir)
+            else:
+                if reporter:
+                    reporter.paper_stage(index, record.arxiv_id, "latex-to-markdown")
+                record.markdown_path = build_markdown_from_source(record, output_dir, llm_config)
         except Exception as exc:
             record.status = "ingest-failed"
             record.notes.append(f"Ingest failed: {exc}")
@@ -48,7 +57,7 @@ def run_workflow(
         except Exception as exc:
             record.notes.append(f"Extraction failed: {exc}")
             record.extraction_path = ensure_placeholder_extraction(record, output_dir)
-        if record.status == "source-ready":
+        if record.status in {"source-ready", "pdf-ready"}:
             record.status = "markdown-ready"
         if record.status == "markdown-ready":
             record.status = "extraction-ready"

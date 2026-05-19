@@ -1,139 +1,418 @@
-﻿# autopaper
+# autopaper
 
-`autopaper` is a local paper-analysis tool for batch-processing arXiv papers from a txt file.
+`autopaper` is a local academic paper analysis tool for processing paper collections and generating cross-paper relationship graphs.
 
-It takes a list of arXiv IDs or URLs, downloads each paper's source package, reads the LaTeX source, converts it into normalized markdown, uses an LLM to extract structured academic units, and then builds cross-paper relationship graphs with both macro and micro views.
+The system accepts a text input list, ingests arXiv papers or local PDF files, converts paper content into normalized markdown, uses an LLM to extract structured academic units, and constructs both macro-level and micro-level relationship views across papers.
 
-## What this tool does
+## Overview
 
-Given a txt file of arXiv papers, `autopaper` will:
+The workflow is organized as the following stages:
 
-1. normalize each arXiv URL or ID
-2. download the paper source package from arXiv
-3. unpack the source tree locally
-4. locate the most likely LaTeX entrypoint
-5. convert the paper into normalized markdown
-6. call an LLM to extract paper units
-7. call an LLM again to infer cross-paper relations
-8. export graph data and local graph viewers
+1. Input list parsing
+2. Paper content acquisition
+3. Content normalization to markdown
+4. Structured unit extraction
+5. Cross-paper relation inference
+6. Graph export and local visualization
 
-## Current pipeline
+The generated graph contains two coordinated views:
 
-The current workflow is:
+- `macro`: paper-to-paper relations for high-level structure
+- `micro`: unit-to-unit relations for fine-grained semantic support
 
-1. `txt -> arXiv source archive`
-2. `source archive -> normalized markdown`
+## Supported Inputs
+
+Each line of the input text file may contain one paper entry.
+
+Supported entry types:
+
+- arXiv ID
+- arXiv abstract URL
+- local PDF file path
+
+Examples:
+
+```txt
+2504.01848
+https://arxiv.org/abs/2410.07095
+D:\papers\example.pdf
+```
+
+The content ingestion behavior is:
+
+- arXiv papers are fetched from the arXiv source endpoint
+- LaTeX source packages are unpacked and converted through the LaTeX pipeline
+- arXiv source responses that are actually PDF files are routed through the PDF pipeline
+- local PDF files are routed directly through the PDF pipeline
+
+## Pipeline Behavior
+
+The runtime pipeline is:
+
+1. `txt -> arXiv source archive or local PDF`
+2. `LaTeX source or PDF text -> normalized markdown`
 3. `markdown -> structured paper units`
 4. `paper units -> macro + micro relationship graph`
 5. `graph json -> local HTML graph viewer`
 
-## Extraction ontology
+### LaTeX Path
 
-The current per-paper extraction target contains these nine unit types:
+For LaTeX-based papers, the system:
 
-- `research_problem`
-- `scope_or_setting`
+- downloads the source archive
+- unpacks the source tree locally
+- selects the most likely LaTeX entrypoint
+- resolves included `.tex` files
+- removes references and bibliography sections
+- exports normalized markdown for downstream extraction
+
+### PDF Path
+
+For PDF-based papers, the system:
+
+- parses text with `PyMuPDF`
+- performs lightweight cleanup of extracted text
+- removes obvious reference tails when detected
+- exports normalized markdown for downstream extraction
+
+The PDF path is designed for text-based PDFs.
+
+## Extraction Ontology
+
+The per-paper extraction target uses the following unit types:
+
+- `research_question`
 - `core_claim`
 - `method`
 - `formal_conclusion`
-- `validation_logic`
-- `figure_backed_assertion`
-- `assumption_or_prerequisite`
+- `evidence`
+- `assumption`
 - `limitation`
+- `scope`
+- `resource`
 
-Important rules:
+General extraction conventions:
 
 - a paper may contain multiple units of the same type
-- the extractor does not assume there is only one claim, method, or conclusion
-- units are meant to support later cross-paper relation building
+- `summary` is compact and relation-oriented
+- `text` preserves the substantive content with more detail
+- `sources` preserve traceability to the original paper text
+- `evidence` units may reference supported claims or conclusions through `supports`
+- `resource` units preserve concrete names when benchmarks, datasets, models, codebases, or tools are explicitly stated
 
-## Relationship graph output
+## Relationship Graph
 
-The graph is split into two layers:
+The graph is exported in two layers.
 
-- `macro`: paper-to-paper relations
-- `micro`: unit-to-unit relations across papers
+### Macro View
 
-Each run exports:
+The macro view represents paper-to-paper relations.
 
-- `graph.json`: structured graph data
-- `macro_graph.html`: standalone macro graph page
-- `micro_graph.html`: standalone micro graph page
-- `index.html`: linked local graph viewer
-- `macro.mmd` and `micro.mmd`: Mermaid debug exports
+Supported macro labels:
 
-## Project layout
+- `support`
+- `conflict`
+- `extend`
+- `parallel`
+- `basis`
+- `complement`
+- `apply`
 
-- `app/`: Python package for the pipeline, config, providers, and graph export
-- `config/`: config template and your local runtime config
-- `data/inputs/`: txt input files with arXiv IDs or URLs
-- `data/cache/`: downloaded source archives and unpacked source trees
-- `data/outputs/`: markdown, extraction, graph, and viewer outputs
+### Micro View
+
+The micro view represents cross-paper unit-to-unit relations.
+
+Supported micro labels:
+
+- `support`
+- `conflict`
+- `extend`
+- `parallel`
+- `basis`
+- `complement`
+- `apply`
+- `addresses_limitation_of`
+- `comparable_validation`
+
+Macro edges are derived from accepted micro edges.
+
+## Project Layout
+
+- `app/`: pipeline, providers, config handling, and graph export
+- `config/`: configuration templates and local runtime config
+- `data/inputs/`: input text files
+- `data/cache/`: downloaded archives, unpacked sources, and cached PDFs
+- `data/outputs/`: run outputs
 - `schemas/`: JSON schemas for extraction and graph artifacts
-- `skills/`: local skill documents used as LLM instructions
+- `skills/`: prompt-side skill documents used by the LLM workflow
 
 ## Requirements
 
-You need:
-
-- Python 3.10 or newer
-- network access for:
-  - downloading arXiv source packages
-  - calling your configured LLM API
+- Python `3.10` or newer
+- network access for arXiv downloads and LLM API calls
 - a valid LLM API key
 
-Current `pyproject.toml` does not declare extra runtime packages because the current implementation uses the Python standard library for the main pipeline.
+Runtime dependency:
+
+- `PyMuPDF`
+
+## Installation
+
+Install the project in the current environment:
+
+```powershell
+pip install -e .
+```
+
+If `PyMuPDF` is not present, install it in the same environment:
+
+```powershell
+pip install PyMuPDF
+```
 
 ## Configuration
 
-Copy the example config:
+Copy the example configuration file:
 
 - `config/autopaper_config.example.json`
 
-Create your real local config file at:
+Create a local runtime configuration file:
 
 - `config/autopaper_config.json`
 
-The required fields are:
+### Required Fields
 
 - `llm.provider`
 - `llm.model`
 - `llm.api_key`
-- optional `llm.base_url`
 
-Example:
+### Optional Fields
+
+- `llm.base_url`
+- `llm.json_mode`
+- `llm.max_tokens`
+- `llm.timeout_seconds`
+- `llm.retries`
+
+### Example
 
 ```json
 {
   "llm": {
     "provider": "deepseek-compatible",
     "model": "deepseek-v4-flash",
-    "api_key": "YOUR_REAL_API_KEY",
-    "base_url": "https://api.deepseek.com"
+    "api_key": "YOUR_API_KEY",
+    "base_url": "https://api.deepseek.com",
+    "json_mode": "json_object",
+    "max_tokens": 4000,
+    "timeout_seconds": 180,
+    "retries": 3
   }
 }
 ```
 
-You can also override the config file path with:
+## Supported LLM Provider Types
 
-```powershell
-python -m app.cli data\inputs\example_arxiv_list.txt --config path\to\config.json
+### OpenAI-Compatible Providers
+
+Supported labels:
+
+- `openai`
+- `openai-compatible`
+- `deepseek-compatible`
+- `qwen-compatible`
+- `kimi-compatible`
+
+These providers use the OpenAI-compatible chat completions path.
+
+### Anthropic Providers
+
+Supported labels:
+
+- `anthropic`
+- `anthropic-native`
+
+These providers use the Anthropic Messages API path.
+
+## `json_mode`
+
+Supported values:
+
+- `auto`
+- `json_schema`
+- `json_object`
+- `prompt_only`
+
+Recommended configuration by provider family:
+
+- `openai` / `openai-compatible`: `json_schema` or `auto`
+- `deepseek-compatible`: `json_object`
+- `qwen-compatible`: `json_object`
+- `kimi-compatible`: `json_object`
+- `anthropic` / `anthropic-native`: `prompt_only`
+
+`prompt_only` uses prompt constraints without sending a `response_format` field.
+
+## Provider Configuration Examples
+
+### OpenAI
+
+```json
+{
+  "llm": {
+    "provider": "openai-compatible",
+    "model": "gpt-4.1",
+    "api_key": "YOUR_OPENAI_KEY",
+    "base_url": "https://api.openai.com/v1",
+    "json_mode": "json_schema"
+  }
+}
 ```
 
-Environment override:
+### DeepSeek
+
+```json
+{
+  "llm": {
+    "provider": "deepseek-compatible",
+    "model": "deepseek-v4-flash",
+    "api_key": "YOUR_DEEPSEEK_KEY",
+    "base_url": "https://api.deepseek.com",
+    "json_mode": "json_object"
+  }
+}
+```
+
+### Qwen
+
+```json
+{
+  "llm": {
+    "provider": "qwen-compatible",
+    "model": "qwen-max",
+    "api_key": "YOUR_QWEN_KEY",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "json_mode": "json_object"
+  }
+}
+```
+
+### Kimi
+
+```json
+{
+  "llm": {
+    "provider": "kimi-compatible",
+    "model": "kimi-k2.5",
+    "api_key": "YOUR_KIMI_KEY",
+    "base_url": "https://api.moonshot.ai/v1",
+    "json_mode": "json_object"
+  }
+}
+```
+
+### Anthropic
+
+```json
+{
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "api_key": "YOUR_ANTHROPIC_KEY",
+    "base_url": "https://api.anthropic.com",
+    "json_mode": "prompt_only"
+  }
+}
+```
+
+## Running the Tool
+
+### Basic Command
+
+```powershell
+python -m app.cli data\inputs\example_arxiv_list.txt
+```
+
+### With Explicit Config
+
+```powershell
+python -m app.cli data\inputs\example_arxiv_list.txt --config config\autopaper_config.json
+```
+
+### With Explicit Output Directory
+
+```powershell
+python -m app.cli data\inputs\example_arxiv_list.txt --output-dir data\outputs\my_run --config config\autopaper_config.json
+```
+
+### Installed Entry Point
+
+```powershell
+autopaper data\inputs\example_arxiv_list.txt
+```
+
+### Command-Line Arguments
+
+- `input_txt`: path to the input text file
+- `--output-dir`: explicit run directory or base output directory
+- `--cache-dir`: cache location, default `data/cache`
+- `--config`: path to the runtime config file
+
+## Output Structure
+
+If `--output-dir` is not specified, each run is written to a timestamped directory under `data/outputs/`.
+
+Example:
+
+```txt
+data/outputs/run_20260519_183000
+```
+
+Typical run contents:
+
+- `manifest.json`
+- `markdown/`
+- `extractions/`
+- `graphs/`
+- `debug/`
+
+### Main Output Files
+
+- `manifest.json`: per-paper workflow summary
+- `markdown/*.md`: normalized paper markdown
+- `extractions/*.json`: structured paper units
+- `graphs/graph.json`: macro and micro graph payload
+- `graphs/index.html`: local graph viewer
+- `graphs/macro_graph.html`: macro-only view
+- `graphs/micro_graph.html`: micro-only view
+- `graphs/debug/`: relation inference debug artifacts
+
+## Input Preparation
+
+The repository already includes example input files:
+
+- `data/inputs/example_arxiv_list.txt`
+- `data/inputs/single_arxiv.txt`
+
+You may also create a custom input file with any supported combination of arXiv entries and local PDF paths.
+
+## Environment Override
+
+The runtime config path may also be provided through:
 
 - `AUTOPAPER_CONFIG`
 
-If this environment variable is set, it will be used as the config file path.
+## Git and Privacy
 
-## Git and privacy
-
-Commit:
+Recommended to commit:
 
 - `config/autopaper_config.example.json`
-- code, schemas, skills, and safe sample inputs
+- source code
+- schemas
+- skill files
+- safe sample inputs
 
-Do not commit:
+Recommended to keep local only:
 
 - `config/autopaper_config.json`
 - real API keys
@@ -141,101 +420,24 @@ Do not commit:
 - `data/outputs/`
 - local scratch notes or temporary files
 
-These are already covered in `.gitignore`:
+## Limitations
 
-- `config/autopaper_config.json`
-- `data/cache/`
-- `data/outputs/`
-- top-level task notes and local scratch files
+- The LaTeX path depends on source package quality and template structure.
+- The PDF path is intended for text-based PDFs rather than OCR-heavy scanned documents.
+- Some PDF files may still contain layout-driven text artifacts after lightweight cleanup.
+- Some papers may require additional normalization support for unusual LaTeX templates.
+- LLM extraction and graph inference depend on provider output stability and valid JSON responses.
 
-## How to prepare input
+## Development Note
 
-Create a txt file with one arXiv ID or URL per line.
+`skills/*.md` files define task-side instruction documents used during LLM prompting.
 
-Example:
+Runtime execution responsibilities are handled by local code in:
 
-```txt
-https://arxiv.org/abs/2504.01848
-https://arxiv.org/abs/2410.07095
-https://arxiv.org/abs/2604.13018
-```
-
-The repository already includes an example input file:
-
-- `data/inputs/example_arxiv_list.txt`
-
-## How to run
-
-Run with the module entrypoint:
-
-```powershell
-python -m app.cli data\inputs\example_arxiv_list.txt
-```
-
-Optional arguments:
-
-- `--output-dir`
-- `--cache-dir`
-- `--config`
-
-Example:
-
-```powershell
-python -m app.cli data\inputs\example_arxiv_list.txt --output-dir data\outputs\my_run --config config\autopaper_config.json
-```
-
-If you install the package entrypoint, you can also run:
-
-```powershell
-autopaper data\inputs\example_arxiv_list.txt
-```
-
-## Output convention
-
-By default, each run writes to a timestamped directory under `data/outputs/`, for example:
-
-```txt
-data/outputs/run_20260518_122509
-```
-
-This keeps different runs separate.
-
-Typical contents include:
-
-- `manifest.json`
-- `markdown/`
-- `extractions/`
-- `graphs/`
-
-## Main output files
-
-Inside one run directory:
-
-- `manifest.json`: per-paper pipeline summary
-- `markdown/*.md`: normalized paper markdown
-- `extractions/*.json`: extracted units
-- `graphs/graph.json`: graph data
-- `graphs/index.html`: local linked viewer
-- `graphs/debug/`: candidate-pair and relation debug files
-
-## Current limitations
-
-Current behavior to keep in mind:
-
-- the tool currently works best when arXiv source packages are real LaTeX source packages
-- some papers may still use unusual templates that require more markdown normalization support
-- LLM extraction and relation inference can occasionally fail due to malformed or truncated JSON API responses
-- the graph viewer is functional, but still being iterated visually and interactively
-
-## Development note
-
-In this repository, `skills/*.md` are used as LLM instruction documents.
-
-They are not the runtime framework.
-
-The runtime responsibilities are:
-
-- local code handles files, caching, markdown generation, prompt construction, API calls, and output artifacts
-- the LLM handles semantic extraction and relation inference
-
-For GitHub publishing, keep `config/autopaper_config.example.json` in the repo and keep `config/autopaper_config.json` local only.
+- file acquisition
+- caching
+- markdown generation
+- prompt construction
+- LLM API requests
+- extraction artifact writing
+- graph export and viewer generation

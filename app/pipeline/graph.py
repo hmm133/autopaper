@@ -14,12 +14,15 @@ from app.providers.factory import build_provider
 FULL_PAIRWISE_LIMIT = 8
 DEFAULT_TOP_K = 4
 SIMILARITY_FIELDS = {
-    "research_problem": 3.0,
+    "research_question": 3.0,
     "core_claim": 2.5,
     "method": 2.0,
     "formal_conclusion": 2.0,
-    "validation_logic": 1.5,
+    "evidence": 1.5,
+    "scope": 1.0,
+    "assumption": 0.8,
     "limitation": 1.0,
+    "resource": 1.0,
 }
 
 
@@ -143,13 +146,15 @@ def _build_macro_nodes(records: list[PaperRecord], extraction_payloads: dict[str
     nodes = []
     for record in records:
         extraction = extraction_payloads.get(record.arxiv_id, {})
+        metadata = extraction.get("paper_metadata") or {}
+        title = metadata.get("title") or record.title
         nodes.append(
             {
                 "id": record.arxiv_id,
-                "label": record.title or record.arxiv_id,
+                "label": title or record.arxiv_id,
                 "kind": "paper",
                 "paper_id": record.arxiv_id,
-                "title": extraction.get("title") or record.title,
+                "title": title,
             }
         )
     return nodes
@@ -158,7 +163,8 @@ def _build_macro_nodes(records: list[PaperRecord], extraction_payloads: dict[str
 def _build_micro_nodes(extraction_payloads: dict[str, dict]) -> list[dict]:
     nodes: list[dict] = []
     for paper_id, extraction in extraction_payloads.items():
-        title = extraction.get("title")
+        metadata = extraction.get("paper_metadata") or {}
+        title = metadata.get("title")
         for unit in extraction.get("units", []):
             nodes.append(
                 {
@@ -169,6 +175,14 @@ def _build_micro_nodes(extraction_payloads: dict[str, dict]) -> list[dict]:
                     "title": title,
                     "unit_type": unit["type"],
                     "summary": unit.get("summary"),
+                    "text": unit.get("text"),
+                    "supports": unit.get("supports", []),
+                    "evidence_type": unit.get("evidence_type"),
+                    "scope_data": unit.get("scope_data"),
+                    "resource_name": unit.get("resource_name"),
+                    "resource_type": unit.get("resource_type"),
+                    "resource_role": unit.get("resource_role"),
+                    "sources": unit.get("sources", []),
                 }
             )
     return nodes
@@ -507,26 +521,26 @@ def _build_single_layer_html(title: str, layer_name: str, layer: dict) -> str:
     document.getElementById("node-count").textContent = payload.nodes.length;
     document.getElementById("edge-count").textContent = payload.edges.length;
     const relationColors = {{
-      support: '#2d7a59',
-      conflict: '#b34d4d',
-      extend: '#4b63c3',
-      parallel: '#8a6b32',
-      basis: '#6f5ca7',
-      complement: '#a15e28',
-      apply: '#2c6d8f',
-      addresses_limitation_of: '#8c5a26',
-      comparable_validation: '#5f6875',
+      support: '#16a34a',
+      conflict: '#dc2626',
+      extend: '#2563eb',
+      parallel: '#f59e0b',
+      basis: '#7c3aed',
+      complement: '#ea580c',
+      apply: '#0891b2',
+      addresses_limitation_of: '#be123c',
+      comparable_validation: '#475569',
     }};
     const unitColors = {{
-      research_problem: '#365a7c',
-      scope_or_setting: '#6d7a88',
-      core_claim: '#8b4e3a',
-      method: '#356f52',
-      formal_conclusion: '#85713c',
-      validation_logic: '#5f6b7b',
-      figure_backed_assertion: '#8f4f72',
-      assumption_or_prerequisite: '#6c5f91',
-      limitation: '#9c6a2d',
+      research_question: '#0f766e',
+      core_claim: '#b91c1c',
+      method: '#1d4ed8',
+      formal_conclusion: '#7c3aed',
+      evidence: '#ea580c',
+      assumption: '#a16207',
+      limitation: '#be123c',
+      scope: '#475569',
+      resource: '#0891b2',
     }};
     const layerPalette = payload.layer_name === 'macro'
       ? {{ fill: '#fffaf0', stroke: '#7c6651', tag: '#e7ddcf' }}
@@ -831,12 +845,15 @@ def _build_linked_viewer_html(payload: dict) -> str:
         </div>
         <div class="meta" id="micro-meta">Select a macro edge to inspect the corresponding micro subgraph.</div>
         <div class="legend">
-          <span><i class="swatch" style="background:#365a7c;"></i>problem</span>
-          <span><i class="swatch" style="background:#8b4e3a;"></i>claim</span>
-          <span><i class="swatch" style="background:#356f52;"></i>method</span>
-          <span><i class="swatch" style="background:#85713c;"></i>conclusion</span>
-          <span><i class="swatch" style="background:#5f6b7b;"></i>validation</span>
-          <span><i class="swatch" style="background:#9c6a2d;"></i>limitation</span>
+          <span><i class="swatch" style="background:#0f766e;"></i>question</span>
+          <span><i class="swatch" style="background:#b91c1c;"></i>claim</span>
+          <span><i class="swatch" style="background:#1d4ed8;"></i>method</span>
+          <span><i class="swatch" style="background:#7c3aed;"></i>conclusion</span>
+          <span><i class="swatch" style="background:#ea580c;"></i>evidence</span>
+          <span><i class="swatch" style="background:#475569;"></i>scope</span>
+          <span><i class="swatch" style="background:#a16207;"></i>assumption</span>
+          <span><i class="swatch" style="background:#be123c;"></i>limitation</span>
+          <span><i class="swatch" style="background:#0891b2;"></i>resource</span>
         </div>
       </div>
       <div class="canvas"><div id="micro-mount" class="mount"></div></div>
@@ -876,27 +893,27 @@ def _build_linked_viewer_html(payload: dict) -> str:
     const microEdgeMap = new Map((graph.micro?.edges || []).map((item) => [item.id, item]));
 
     const relationColors = {{
-      support: "#2a7f62",
-      conflict: "#b44d4d",
-      extend: "#4b5db5",
-      parallel: "#8b6f35",
-      basis: "#6e5c97",
-      complement: "#9a5a2c",
-      apply: "#2a6b8f",
-      addresses_limitation_of: "#7e4d27",
-      comparable_validation: "#5d6778",
+      support: "#16a34a",
+      conflict: "#dc2626",
+      extend: "#2563eb",
+      parallel: "#f59e0b",
+      basis: "#7c3aed",
+      complement: "#ea580c",
+      apply: "#0891b2",
+      addresses_limitation_of: "#be123c",
+      comparable_validation: "#475569",
     }};
 
     const unitColors = {{
-      research_problem: "#365a7c",
-      scope_or_setting: "#6d7a88",
-      core_claim: "#8b4e3a",
-      method: "#356f52",
-      formal_conclusion: "#85713c",
-      validation_logic: "#5f6b7b",
-      figure_backed_assertion: "#8f4f72",
-      assumption_or_prerequisite: "#6c5f91",
-      limitation: "#9c6a2d",
+      research_question: "#0f766e",
+      core_claim: "#b91c1c",
+      method: "#1d4ed8",
+      formal_conclusion: "#7c3aed",
+      evidence: "#ea580c",
+      assumption: "#a16207",
+      limitation: "#be123c",
+      scope: "#475569",
+      resource: "#0891b2",
     }};
 
     function hexToRgba(hex, alpha) {{
@@ -914,6 +931,44 @@ def _build_linked_viewer_html(payload: dict) -> str:
     function truncate(text, limit) {{
       if (!text) return "";
       return text.length > limit ? text.slice(0, limit - 3) + "..." : text;
+    }}
+
+    function formatBlock(label, value) {{
+      if (value === null || value === undefined) return '';
+      if (Array.isArray(value) && value.length === 0) return '';
+      if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return '';
+      const rendered = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+      return `${{label}}: ${{rendered}}`;
+    }}
+
+    function renderMicroNodeDetail(node) {{
+      const blocks = [];
+      blocks.push(formatBlock('Type', node.unit_type));
+      blocks.push(formatBlock('Text', node.text));
+      blocks.push(formatBlock('Evidence Type', node.evidence_type));
+      blocks.push(formatBlock('Resource Name', node.resource_name));
+      blocks.push(formatBlock('Resource Type', node.resource_type));
+      blocks.push(formatBlock('Resource Role', node.resource_role));
+      blocks.push(formatBlock('Supports', node.supports));
+      blocks.push(formatBlock('Scope Data', node.scope_data));
+      return blocks.filter(Boolean).join('\\n\\n');
+    }}
+
+    function renderMacroNodeDetail(node) {{
+      const blocks = [];
+      blocks.push(formatBlock('Title', node.title));
+      blocks.push(formatBlock('ID', node.id));
+      return blocks.filter(Boolean).join('\\n\\n');
+    }}
+
+    function renderEdgeDetail(edge) {{
+      const blocks = [];
+      blocks.push(formatBlock('Relation', edge.relation));
+      blocks.push(formatBlock('Confidence', edge.confidence));
+      blocks.push(formatBlock('Rationale', edge.rationale));
+      blocks.push(formatBlock('Supporting Micro Edges', edge.supporting_micro_edges));
+      blocks.push(formatBlock('Evidence Refs', edge.evidence_refs));
+      return blocks.filter(Boolean).join('\\n\\n');
     }}
 
     function setExpandState(mode) {{
@@ -1110,11 +1165,11 @@ def _build_linked_viewer_html(payload: dict) -> str:
         'micro',
         (node) => {{
           selectionSummary.textContent = `Micro node: ${{node.unit_type || node.kind}}`;
-          selectionDetail.textContent = JSON.stringify(node, null, 2);
+          selectionDetail.textContent = renderMicroNodeDetail(node);
         }},
         (edge) => {{
           selectionSummary.textContent = `Micro edge: ${{edge.relation}}`;
-          selectionDetail.textContent = JSON.stringify(edge, null, 2);
+          selectionDetail.textContent = renderEdgeDetail(edge);
         }},
       );
       window.setTimeout(() => refreshGraphViewport(microGraph, document.getElementById('micro-mount')), 30);
@@ -1128,13 +1183,13 @@ def _build_linked_viewer_html(payload: dict) -> str:
       (node) => {{
         if (!node) return;
         selectionSummary.textContent = `Paper: ${{node.label || node.id}}`;
-        selectionDetail.textContent = JSON.stringify(node, null, 2);
+        selectionDetail.textContent = renderMacroNodeDetail(node);
         selectMacroNode(node);
       }},
       (edge) => {{
         if (!edge) return;
         selectionSummary.textContent = `Macro edge: ${{edge.relation}}`;
-        selectionDetail.textContent = JSON.stringify(edge, null, 2);
+        selectionDetail.textContent = renderEdgeDetail(edge);
         selectMacroEdge(edge);
       }},
     );

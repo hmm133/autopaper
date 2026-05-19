@@ -1,115 +1,202 @@
 ---
 name: paper-unit-extractor
-description: Extract structured mid-granularity academic units when Codex needs to turn paper markdown into reusable research problems, settings, claims, methods, conclusions, validation logic, figure-backed assertions, assumptions, and limitations with explicit attribution for each unit.
+description: Extract relation-oriented paper units from markdown so later graph construction can compare research questions, claims, methods, conclusions, evidence, assumptions, limitations, scope, and resources with explicit traceable support.
 ---
 
 # Paper Unit Extractor
 
-Use this skill to transform per-paper markdown into structured extraction JSON.
+Use this skill to transform one paper markdown file into a structured unit JSON that is optimized for later cross-paper relation inference.
+
+The goal is not generic summarization.
+
+The goal is to extract a stable intermediate representation that makes later paper-to-paper and unit-to-unit comparison easier, cheaper, and less ambiguous.
+
+## Required Top-Level Output
+
+The output should contain:
+
+- `paper_metadata`
+- `units`
+
+`paper_metadata` should be lightweight and only include fields that are explicitly available or strongly recoverable from the paper:
+
+- `title`
+- `authors`
+- `year`
+- `venue`
+- `arxiv_id`
+- `doi`
+- `source_url`
+- `markdown_path`
+
+If a field is missing, use `null` or `[]` as appropriate. Do not hallucinate.
 
 ## Required Unit Types
 
-- `research_problem`
-- `scope_or_setting`
+- `research_question`
 - `core_claim`
-- `method`
 - `formal_conclusion`
-- `validation_logic`
-- `figure_backed_assertion`
-- `assumption_or_prerequisite`
+- `method`
+- `evidence`
 - `limitation`
+- `assumption`
+- `scope`
+- `resource`
 
-## Cardinality Rule
+## Core Principle
 
-- Never assume there is only one unit per type.
-- A paper may contain:
-  - multiple claims
-  - multiple methods or sub-methods worth tracking
-  - multiple conclusions
-  - multiple validation logics
-  - multiple figure-backed assertions
-  - multiple assumptions or limitations
-- Extract as many units as are genuinely relation-relevant, but do not fragment the paper into sentence-level trivia.
-- If two candidate units are materially the same, merge them.
-- If they support different future cross-paper relations, keep them separate.
+Extract units for relation building, not for archival completeness.
 
-## Extraction Rules
+Every extracted unit should help answer at least one later question such as:
 
-- Extract only academically meaningful units.
-- Avoid sentence-by-sentence decomposition.
-- Avoid full-paper vague summaries.
-- Keep each unit specific enough for cross-paper comparison.
-- Attach evidence for every unit.
-- Prefer section-driven extraction over isolated sentence mining.
-- Use the paper structure to keep units at a fixed middle granularity.
-- If a section is noisy, extract one denser synthesized unit rather than many brittle fragments.
+- Do these two papers solve the same or adjacent research question?
+- Does one paper support, extend, apply, or conflict with another?
+- Are two methods comparable, inherited, or meaningfully different?
+- Does one paper address a limitation or assumption stated by another?
+- Do two papers rely on similar evidence or comparable benchmarks?
+- Are they using or producing the same benchmark, dataset, model, or code artifact?
+
+If a candidate unit is too weak to support later relation reasoning, do not extract it.
+
+## Granularity Rules
+
+- Use middle granularity.
+- Each unit should express one coherent academic idea, usually around one compact statement rather than one sentence fragment or one full section summary.
+- `summary` should stay short.
+- `text` should be clearly more detailed than `summary`.
+- `text` may use 1 to 3 sentences when needed so the substance of the idea is preserved.
+- Do not force `text` to be overly short, but do not let it expand into a long paragraph.
+- Prefer one stronger unit over several brittle fragments.
+- Do not decompose the paper sentence by sentence.
+- Do not produce vague whole-paper blurbs.
+
+## Cardinality Rules
+
+- Never assume only one unit exists for a given type.
+- Every type may contain `0..N` units.
+- Extract multiple units only when they are genuinely distinct and relation-relevant.
+- Merge near-duplicates.
+- Keep separate units when they could support different future relations.
 
 ## Type Definitions
 
-### `research_problem`
+### `research_question`
 
-- What concrete research question or challenge the paper addresses.
-- Extract more than one only if the paper clearly tackles multiple distinct problems.
-- Do not restate the whole paper; focus on the problem statement itself.
-
-### `scope_or_setting`
-
-- The task setting, domain, scenario, data regime, or formal problem setting in which the paper operates.
-- Use this when the setting changes how comparisons with other papers should be interpreted.
-- Extract multiple units if the paper studies multiple clearly distinct settings.
+- The concrete research question, target problem, or study objective the paper addresses.
+- It should say what is being solved, explained, tested, or improved.
+- Extract more than one only when the paper clearly tackles multiple distinct questions.
 
 ### `core_claim`
 
-- The paper's central claims, contributions, or thesis-level assertions.
-- Multiple core claims are allowed when the paper makes several distinct contributions.
-- Do not collapse unrelated contributions into one vague summary.
-
-### `method`
-
-- The method, framework, algorithm, system design, modeling strategy, or procedural solution proposed or used.
-- A paper may have multiple methods if it introduces multiple components that can independently relate to later work.
-- Avoid extracting generic implementation details unless they matter for cross-paper comparison.
+- The paper's main thesis-level claims or contribution assertions.
+- These are the statements the paper wants the reader to take seriously before validation details.
+- A paper may have multiple distinct claims.
 
 ### `formal_conclusion`
 
-- The final takeaways the paper wants the reader to accept as established.
-- A paper may have multiple formal conclusions if it reaches several distinct findings.
-- Prefer conclusions that are stable, explicit, and relation-worthy over proof-local or incidental statements.
+- The specific findings the paper presents as established after analysis, experiments, proofs, or evaluation.
+- These are more evidence-bound than `core_claim`.
+- Keep them separate from claims whenever the paper distinguishes proposal from validated finding.
 
-### `validation_logic`
+### `method`
 
-- The evidence structure used to support claims or conclusions.
-- Capture what is being validated, how it is validated, against what baselines or comparisons, and what kind of result pattern matters.
-- This is not parameter logging or raw experiment detail dumping.
-- Multiple validation logics are expected when different claims are validated in different ways.
+- The proposed method, framework, algorithm, system design, modeling strategy, or structured solution.
+- Extract method units that are comparison-worthy across papers.
+- Ignore low-level implementation trivia unless it changes later relation reasoning.
 
-### `figure_backed_assertion`
+### `evidence`
 
-- A claim or conclusion directly supported by a figure, table, ablation, case study result, or reported numeric comparison.
-- Extract only assertions that are useful for later relation reasoning.
-- Multiple figure-backed assertions are normal.
+- A concrete piece of support for one or more claims or conclusions.
+- This may come from experiments, benchmarks, ablations, figures, tables, case studies, simulations, or theoretical proof structure.
+- Every `evidence` unit should make clear what it supports.
+- Use `supports` to point to the relevant `core_claim` and/or `formal_conclusion` IDs.
+- Use `evidence_type` when possible:
+  - `experimental`
+  - `theoretical`
+  - `simulation`
+  - `case_study`
+  - `benchmark`
+  - `ablation`
+  - `figure_or_table`
 
-### `assumption_or_prerequisite`
-
-- Preconditions, modeling assumptions, theoretical assumptions, or operational prerequisites under which the paper's method or conclusion holds.
-- Extract them when they affect comparability or explain why two papers may align or differ.
-- Multiple assumptions are allowed.
+Do not split evidence into raw numbers unless the numeric contrast itself is relation-relevant.
 
 ### `limitation`
 
-- Explicitly stated weaknesses, uncovered cases, tradeoffs, or boundaries of the paper.
-- These are important because later papers often extend or repair them.
-- Extract multiple limitations if they are distinct and relation-relevant.
+- An explicit limitation, boundary condition, weakness, tradeoff, or uncovered case stated by the authors.
+- Only extract author-stated limitations.
+- Do not invent reviewer-style criticisms.
 
-## Attribution Rules
+### `assumption`
 
-Each extracted unit should preserve:
+- A prerequisite or assumption under which the method, argument, or conclusion is meant to hold.
+- Extract assumptions that affect comparability or explain later agreement and disagreement between papers.
 
-- source file
-- section hint
-- quote or near-quote evidence
+### `scope`
 
-Use [`paper_units.schema.json`](D:\研究生\papers\实验\autopaper\schemas\paper_units.schema.json) as the output contract.
+- The task setting, domain, environment, data regime, benchmark context, or study setting in which the work operates.
+- This is mainly a comparison and filtering unit, not a catch-all summary.
+- Prefer `scope_data` when obvious, such as task, domain, dataset, environment, or benchmark.
+
+### `resource`
+
+- A reusable artifact that the paper uses or produces.
+- Preserve the concrete resource name whenever the paper provides one.
+- If helpful, use:
+  - `resource_name` for the specific benchmark, dataset, model, codebase, or tool name
+  - `resource_type` such as `dataset`, `benchmark`, `model`, `code`, `software`, `tool`
+  - `resource_role` such as `used` or `produced`
+
+Only extract resources that are relation-relevant.
+
+## Unit Structure Rules
+
+Each unit should contain:
+
+- `id`
+- `type`
+- `text`
+- `summary`
+- `sources`
+
+Optional fields may include:
+
+- `supports`
+- `evidence_type`
+- `scope_data`
+- `resource_name`
+- `resource_type`
+- `resource_role`
+
+## Evidence Traceability Rules
+
+Every unit must preserve traceable support through the `sources` array.
+
+Each source item should include:
+
+- `section_hint`
+- `quote`
+
+Keep quotes short and targeted. Near-quote is acceptable when needed for cleanup.
+
+## Cross-Reference Rule For `evidence`
+
+When extracting `evidence` units:
+
+- Prefer linking them to concrete `core_claim` or `formal_conclusion` IDs through `supports`.
+- Only reference IDs that actually exist in the previously extracted claim/conclusion set for the same paper.
+- If no valid target exists, use an empty array rather than fabricating links.
+
+## Output Discipline
+
+- Return valid JSON only.
+- Follow the schema exactly.
+- If a type is not present, output no unit for that type.
+- Do not emit empty optional fields just to fill space.
+- For `resource`, prefer concrete names over generic descriptions whenever the paper states them.
+- Do not hallucinate metadata, results, or resources.
+- Ignore references and bibliography.
+- Favor precision over coverage.
 
 ## References
 
