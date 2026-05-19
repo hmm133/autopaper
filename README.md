@@ -180,13 +180,13 @@ Create a local runtime configuration file:
 
 - `config/autopaper_config.json`
 
-### Required Fields
+Required fields:
 
 - `llm.provider`
 - `llm.model`
 - `llm.api_key`
 
-### Optional Fields
+Common optional fields:
 
 - `llm.base_url`
 - `llm.json_mode`
@@ -194,7 +194,7 @@ Create a local runtime configuration file:
 - `llm.timeout_seconds`
 - `llm.retries`
 
-### Example
+Example:
 
 ```json
 {
@@ -211,119 +211,28 @@ Create a local runtime configuration file:
 }
 ```
 
-## Supported LLM Provider Types
-
-### OpenAI-Compatible Providers
-
-Supported labels:
+Supported provider labels:
 
 - `openai`
 - `openai-compatible`
 - `deepseek-compatible`
 - `qwen-compatible`
 - `kimi-compatible`
-
-These providers use the OpenAI-compatible chat completions path.
-
-### Anthropic Providers
-
-Supported labels:
-
 - `anthropic`
 - `anthropic-native`
 
-These providers use the Anthropic Messages API path.
+`json_mode` controls how the runtime asks the model for structured JSON output:
 
-## `json_mode`
+- `auto`: choose a default based on provider or model name
+- `json_schema`: send a schema-style structured output request
+- `json_object`: request a plain JSON object response
+- `prompt_only`: rely on prompt instructions only and do not send `response_format`
 
-Supported values:
+In practice:
 
-- `auto`
-- `json_schema`
-- `json_object`
-- `prompt_only`
-
-Recommended configuration by provider family:
-
-- `openai` / `openai-compatible`: `json_schema` or `auto`
-- `deepseek-compatible`: `json_object`
-- `qwen-compatible`: `json_object`
-- `kimi-compatible`: `json_object`
-- `anthropic` / `anthropic-native`: `prompt_only`
-
-`prompt_only` uses prompt constraints without sending a `response_format` field.
-
-## Provider Configuration Examples
-
-### OpenAI
-
-```json
-{
-  "llm": {
-    "provider": "openai-compatible",
-    "model": "gpt-4.1",
-    "api_key": "YOUR_OPENAI_KEY",
-    "base_url": "https://api.openai.com/v1",
-    "json_mode": "json_schema"
-  }
-}
-```
-
-### DeepSeek
-
-```json
-{
-  "llm": {
-    "provider": "deepseek-compatible",
-    "model": "deepseek-v4-flash",
-    "api_key": "YOUR_DEEPSEEK_KEY",
-    "base_url": "https://api.deepseek.com",
-    "json_mode": "json_object"
-  }
-}
-```
-
-### Qwen
-
-```json
-{
-  "llm": {
-    "provider": "qwen-compatible",
-    "model": "qwen-max",
-    "api_key": "YOUR_QWEN_KEY",
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "json_mode": "json_object"
-  }
-}
-```
-
-### Kimi
-
-```json
-{
-  "llm": {
-    "provider": "kimi-compatible",
-    "model": "kimi-k2.5",
-    "api_key": "YOUR_KIMI_KEY",
-    "base_url": "https://api.moonshot.ai/v1",
-    "json_mode": "json_object"
-  }
-}
-```
-
-### Anthropic
-
-```json
-{
-  "llm": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-20250514",
-    "api_key": "YOUR_ANTHROPIC_KEY",
-    "base_url": "https://api.anthropic.com",
-    "json_mode": "prompt_only"
-  }
-}
-```
+- OpenAI-style models usually work with `auto` or `json_schema`
+- DeepSeek, Qwen, and Kimi usually work with `json_object`
+- Anthropic usually works with `prompt_only`
 
 ## Running the Tool
 
@@ -357,6 +266,12 @@ autopaper data\inputs\example_arxiv_list.txt
 - `--output-dir`: explicit run directory or base output directory
 - `--cache-dir`: cache location, default `data/cache`
 - `--config`: path to the runtime config file
+
+## Example Run
+
+The following screenshot shows a batch command-line run with progress output:
+
+![Autopaper batch run example](figure/example-shot.png)
 
 ## Output Structure
 
