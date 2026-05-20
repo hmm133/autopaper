@@ -47,35 +47,10 @@ The content ingestion behavior is:
 
 ## Pipeline Behavior
 
-The runtime pipeline is:
+The runtime converts the input list into normalized markdown, extracts structured units, and builds macro and micro relationship graphs.
 
-1. `txt -> arXiv source archive or local PDF`
-2. `LaTeX source or PDF text -> normalized markdown`
-3. `markdown -> structured paper units`
-4. `paper units -> macro + micro relationship graph`
-5. `graph json -> local HTML graph viewer`
-
-### LaTeX Path
-
-For LaTeX-based papers, the system:
-
-- downloads the source archive
-- unpacks the source tree locally
-- selects the most likely LaTeX entrypoint
-- resolves included `.tex` files
-- removes references and bibliography sections
-- exports normalized markdown for downstream extraction
-
-### PDF Path
-
-For PDF-based papers, the system:
-
-- parses text with `PyMuPDF`
-- performs lightweight cleanup of extracted text
-- removes obvious reference tails when detected
-- exports normalized markdown for downstream extraction
-
-The PDF path is designed for text-based PDFs.
+LaTeX papers are downloaded and converted from source.
+PDF papers are parsed with `PyMuPDF` and lightly cleaned before extraction.
 
 ## Extraction Ontology
 
@@ -180,20 +155,6 @@ Create a local runtime configuration file:
 
 - `config/autopaper_config.json`
 
-Required fields:
-
-- `llm.provider`
-- `llm.model`
-- `llm.api_key`
-
-Common optional fields:
-
-- `llm.base_url`
-- `llm.json_mode`
-- `llm.max_tokens`
-- `llm.timeout_seconds`
-- `llm.retries`
-
 Example:
 
 ```json
@@ -211,28 +172,12 @@ Example:
 }
 ```
 
-Supported provider labels:
-
-- `openai`
-- `openai-compatible`
-- `deepseek-compatible`
-- `qwen-compatible`
-- `kimi-compatible`
-- `anthropic`
-- `anthropic-native`
-
 `json_mode` controls how the runtime asks the model for structured JSON output:
 
 - `auto`: choose a default based on provider or model name
 - `json_schema`: send a schema-style structured output request
 - `json_object`: request a plain JSON object response
 - `prompt_only`: rely on prompt instructions only and do not send `response_format`
-
-In practice:
-
-- OpenAI-style models usually work with `auto` or `json_schema`
-- DeepSeek, Qwen, and Kimi usually work with `json_object`
-- Anthropic usually works with `prompt_only`
 
 ## Running the Tool
 
@@ -275,12 +220,12 @@ The following screenshot shows a batch command-line run with progress output:
 
 ## Output Structure
 
-If `--output-dir` is not specified, each run is written to a timestamped directory under `data/outputs/`.
+If `--output-dir` is not specified, each run is written to a timestamped directory under `data/outputs/`.The graph is  in  data/outputs/graph/index.html
 
-Example:
+Example: 
 
 ```txt
-data/outputs/run_20260519_183000
+data/outputs/run_20260519_183000，
 ```
 
 Typical run contents:
@@ -297,62 +242,20 @@ Typical run contents:
 - `markdown/*.md`: normalized paper markdown
 - `extractions/*.json`: structured paper units
 - `graphs/graph.json`: macro and micro graph payload
-- `graphs/index.html`: local graph viewer
+- `graphs/index.html`: local graph viewer（entrance）
 - `graphs/macro_graph.html`: macro-only view
 - `graphs/micro_graph.html`: micro-only view
 - `graphs/debug/`: relation inference debug artifacts
 
 ## Input Preparation
 
-The repository already includes example input files:
+Example input files:
 
 - `data/inputs/example_arxiv_list.txt`
 - `data/inputs/single_arxiv.txt`
-
-You may also create a custom input file with any supported combination of arXiv entries and local PDF paths.
 
 ## Environment Override
 
 The runtime config path may also be provided through:
 
 - `AUTOPAPER_CONFIG`
-
-## Git and Privacy
-
-Recommended to commit:
-
-- `config/autopaper_config.example.json`
-- source code
-- schemas
-- skill files
-- safe sample inputs
-
-Recommended to keep local only:
-
-- `config/autopaper_config.json`
-- real API keys
-- `data/cache/`
-- `data/outputs/`
-- local scratch notes or temporary files
-
-## Limitations
-
-- The LaTeX path depends on source package quality and template structure.
-- The PDF path is intended for text-based PDFs rather than OCR-heavy scanned documents.
-- Some PDF files may still contain layout-driven text artifacts after lightweight cleanup.
-- Some papers may require additional normalization support for unusual LaTeX templates.
-- LLM extraction and graph inference depend on provider output stability and valid JSON responses.
-
-## Development Note
-
-`skills/*.md` files define task-side instruction documents used during LLM prompting.
-
-Runtime execution responsibilities are handled by local code in:
-
-- file acquisition
-- caching
-- markdown generation
-- prompt construction
-- LLM API requests
-- extraction artifact writing
-- graph export and viewer generation
