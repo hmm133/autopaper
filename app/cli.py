@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from datetime import datetime
 
 from app.config import load_llm_config
 from app.pipeline.workflow import run_workflow
 from app.utils.progress import ProgressReporter
+from app.search.cli import main as search_main
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,9 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if args_list and args_list[0] == "search":
+        search_main(args_list[1:])
+        return
+
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(args_list)
     output_dir = Path(args.output_dir) if args.output_dir else _default_output_dir()
     llm_config = load_llm_config(Path(args.config)) if args.config else load_llm_config()
     reporter = ProgressReporter(total_papers=_count_papers(Path(args.input_txt)))

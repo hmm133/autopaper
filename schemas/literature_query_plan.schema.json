@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LiteratureQueryPlan",
+  "type": "object",
+  "required": [
+    "normalized_topic",
+    "abstract_topic",
+    "search_intent",
+    "categories",
+    "date_start",
+    "date_end",
+    "author_filters",
+    "query",
+    "rationale"
+  ],
+  "properties": {
+    "normalized_topic": { "type": "string" },
+    "abstract_topic": { "type": "string" },
+    "search_intent": { "type": "string" },
+    "categories": { "type": "array", "items": { "type": "string" } },
+    "date_start": { "type": ["string", "null"] },
+    "date_end": { "type": ["string", "null"] },
+    "author_filters": { "type": "array", "items": { "type": "string" } },
+    "query": { "type": "string" },
+    "rationale": { "type": "string" }
+  },
+  "additionalProperties": false
+}

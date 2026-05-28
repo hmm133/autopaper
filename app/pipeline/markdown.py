@@ -64,7 +64,7 @@ COMMAND_REPLACEMENTS = {
 def locate_entrypoint(
     source_dir: Path,
     record: PaperRecord,
-    llm_config: LLMConfig,
+    llm_config: LLMConfig | None,
     output_dir: Path,
 ) -> Path:
     tex_files = sorted(source_dir.rglob("*.tex"))
@@ -72,9 +72,10 @@ def locate_entrypoint(
         raise FileNotFoundError(f"No .tex files found in {source_dir}")
 
     candidate_paths = _rank_entrypoint_candidates(source_dir, tex_files)
-    chosen = _choose_entrypoint_with_llm(record, source_dir, candidate_paths, llm_config, output_dir)
-    if chosen is not None:
-        return chosen
+    if llm_config is not None:
+        chosen = _choose_entrypoint_with_llm(record, source_dir, candidate_paths, llm_config, output_dir)
+        if chosen is not None:
+            return chosen
     return candidate_paths[0]
 
 
@@ -106,7 +107,7 @@ def ensure_placeholder_markdown(record: PaperRecord, output_dir: Path) -> Path:
     return markdown_path
 
 
-def build_markdown_from_source(record: PaperRecord, output_dir: Path, llm_config: LLMConfig) -> Path:
+def build_markdown_from_source(record: PaperRecord, output_dir: Path, llm_config: LLMConfig | None) -> Path:
     if not record.source_dir:
         raise ValueError("record.source_dir is required before markdown generation.")
 

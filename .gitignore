@@ -2,8 +2,11 @@ config/autopaper_config.json
 data/cache/
 data/outputs/
 knowledge/
+docs/
+github_reference_understandanything/
 __pycache__/
 *.py[cod]
 skills收集.txt
 任务目标.txt
 任务.txt
+benchmark.md

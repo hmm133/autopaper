@@ -558,26 +558,48 @@ def _build_single_layer_html(title: str, layer_name: str, layer: dict) -> str:
       return `rgba(${{r}}, ${{g}}, ${{b}}, ${{alpha}})`;
     }}
 
+    function splitLines(text, maxChars) {{
+      if (!text) return [''];
+      const raw = String(text).replace(/\\s+/g, ' ').trim();
+      const chunks = [];
+      for (let i = 0; i < raw.length; i += maxChars) {{
+        chunks.push(raw.slice(i, i + maxChars));
+      }}
+      return chunks.length ? chunks : [''];
+    }}
+
     function wrapText(text, length) {{
       if (!text) return '';
       return text.length > length ? text.slice(0, length - 3) + '...' : text;
     }}
 
     const nodes = payload.nodes.map((node) => {{
-      const label = wrapText(node.label || node.id, payload.layer_name === 'macro' ? 42 : 48);
-      const subtitle = payload.layer_name === 'macro'
-        ? wrapText(node.paper_id || node.id, 28)
-        : wrapText((node.paper_id || '') + ' / ' + (node.unit_type || node.kind || ''), 38);
+      const isMacro = payload.layer_name === 'macro';
+      const labelRaw = node.label || node.id;
+      const subtitleRaw = isMacro
+        ? (node.paper_id || node.id)
+        : ((node.paper_id || '') + ' / ' + (node.unit_type || node.kind || ''));
+      const labelLines = splitLines(labelRaw, isMacro ? 34 : 30).slice(0, isMacro ? 2 : 3);
+      const subtitleLines = splitLines(subtitleRaw, isMacro ? 22 : 26).slice(0, 2);
+      const label = labelLines.map((item) => wrapText(item, isMacro ? 34 : 30)).join('\\n');
+      const subtitle = subtitleLines.map((item) => wrapText(item, isMacro ? 22 : 26)).join('\\n');
+      const lineCount = labelLines.length + subtitleLines.length;
+      const minHeight = isMacro ? 104 : 96;
+      const maxHeight = isMacro ? 160 : 154;
+      const height = Math.min(maxHeight, minHeight + Math.max(0, lineCount - 2) * 16);
+      const width = isMacro ? 284 : 318;
       const unitColor = unitColors[node.unit_type] || layerPalette.stroke;
       return {{
         id: node.id,
         data: node,
         style: {{
-          size: payload.layer_name === 'macro' ? [280, 94] : [310, 86],
+          size: [width, height],
           labelText: label,
           subtitleText: subtitle,
           fill: payload.layer_name === 'micro' ? hexToRgba(unitColor, 0.14) : layerPalette.fill,
           stroke: payload.layer_name === 'micro' ? unitColor : layerPalette.stroke,
+          labelLineHeight: isMacro ? 20 : 18,
+          labelMaxWidth: width - 28,
         }},
       }};
     }});
@@ -928,6 +950,16 @@ def _build_linked_viewer_html(payload: dict) -> str:
       return `rgba(${{r}}, ${{g}}, ${{b}}, ${{alpha}})`;
     }}
 
+    function splitLines(text, maxChars) {{
+      if (!text) return [''];
+      const raw = String(text).replace(/\\s+/g, ' ').trim();
+      const chunks = [];
+      for (let i = 0; i < raw.length; i += maxChars) {{
+        chunks.push(raw.slice(i, i + maxChars));
+      }}
+      return chunks.length ? chunks : [''];
+    }}
+
     function truncate(text, limit) {{
       if (!text) return "";
       return text.length > limit ? text.slice(0, limit - 3) + "..." : text;
@@ -1014,10 +1046,20 @@ def _build_linked_viewer_html(payload: dict) -> str:
 
     function buildNodes(nodes, layer) {{
       return nodes.map((node) => {{
-        const label = truncate(node.label || node.id, layer === 'macro' ? 40 : 48);
-        const subtitle = layer === 'macro'
-          ? truncate(node.paper_id || node.id, 26)
-          : truncate(`${{node.paper_id || ''}} / ${{node.unit_type || ''}}`, 34);
+        const isMacro = layer === 'macro';
+        const labelRaw = node.label || node.id;
+        const subtitleRaw = isMacro
+          ? (node.paper_id || node.id)
+          : `${{node.paper_id || ''}} / ${{node.unit_type || ''}}`;
+        const labelLines = splitLines(labelRaw, isMacro ? 34 : 30).slice(0, isMacro ? 2 : 3);
+        const subtitleLines = splitLines(subtitleRaw, isMacro ? 22 : 26).slice(0, 2);
+        const label = labelLines.map((item) => truncate(item, isMacro ? 34 : 30)).join('\\n');
+        const subtitle = subtitleLines.map((item) => truncate(item, isMacro ? 22 : 26)).join('\\n');
+        const lineCount = labelLines.length + subtitleLines.length;
+        const minHeight = isMacro ? 104 : 96;
+        const maxHeight = isMacro ? 160 : 154;
+        const height = Math.min(maxHeight, minHeight + Math.max(0, lineCount - 2) * 16);
+        const width = isMacro ? 284 : 318;
         const stroke = layer === 'macro'
           ? '#7e6750'
           : (unitColors[node.unit_type] || '#6b7280');
@@ -1028,16 +1070,17 @@ def _build_linked_viewer_html(payload: dict) -> str:
           id: node.id,
           data: node,
           style: {{
-            size: layer === 'macro' ? [280, 98] : [320, 86],
+            size: [width, height],
             fill,
             stroke,
             radius: 18,
             labelText: `${{label}}\\n${{subtitle}}`,
             labelFill: '#1f2328',
-            labelFontSize: layer === 'macro' ? 13 : 12,
-            labelLineHeight: 18,
+            labelFontSize: isMacro ? 13 : 12,
+            labelLineHeight: isMacro ? 20 : 18,
+            labelMaxWidth: width - 28,
             labelPlacement: 'center',
-            lineWidth: layer === 'macro' ? 1.6 : 3,
+            lineWidth: isMacro ? 1.6 : 3,
             shadowColor: 'rgba(72,56,34,0.10)',
             shadowBlur: 20,
             shadowOffsetY: 8,
